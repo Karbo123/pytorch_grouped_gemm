@@ -132,44 +132,41 @@ void initialize_tensor_(Element *ptr, size_t capacity, cutlass::Distribution::Ki
         int bits_output = cutlass::sizeof_bits<typename GemmGrouped::ElementC>::value;
 
         if (bits_input == 1) {
-        scope_max = 2;
-        scope_min = 0;
+            scope_max = 2;
+            scope_min = 0;
         } else if (bits_input <= 8) {
-        scope_max = 2;
-        scope_min = -2;
+            scope_max = 2;
+            scope_min = -2;
         } else if (bits_output == 16) {
-        if (cutlass::sizeof_bits<ElementAccumulator>::value <= 16) {
-            scope_max = 5;
-            scope_min = -5;
-        }
-        else {
+            if (cutlass::sizeof_bits<ElementAccumulator>::value <= 16) {
+                scope_max = 5;
+                scope_min = -5;
+            }
+            else {
+                scope_max = 8;
+                scope_min = -8;
+            }
+        } else {
             scope_max = 8;
             scope_min = -8;
         }
-        } else {
-        scope_max = 8;
-        scope_min = -8;
-        }
 
         cutlass::reference::device::BlockFillRandomUniform(
-        ptr, capacity, seed, scope_max, scope_min, 0);
+            ptr, capacity, seed, scope_max, scope_min, 0);
     } 
     else if (dist_kind == cutlass::Distribution::Gaussian) {
-
         cutlass::reference::device::BlockFillRandomGaussian(
-        ptr, capacity, seed, Element(), Element(0.5f));
+            ptr, capacity, seed, Element(), Element(0.5f));
     }
     else if (dist_kind == cutlass::Distribution::Sequential) {
-
         // Fill with increasing elements
         cutlass::reference::device::BlockFillSequential(
-        ptr, capacity, Element(1), Element());
+            ptr, capacity, Element(1), Element());
     } 
     else {
-
         // Fill with all 1s
         cutlass::reference::device::BlockFillSequential(
-        ptr, capacity, Element(), Element(1));
+            ptr, capacity, Element(), Element(1));
     }
 }
 
@@ -190,17 +187,17 @@ int main(void)
     float alpha = 1.0f;
     float beta = 0.0f;
 
-    /* prepare matrices */
+    /* prepare problem sizes */
     srand(999);
-    std::vector<cutlass::gemm::GemmCoord> problem_sizes;
-    problem_sizes.reserve(problem_count);
+    std::vector<cutlass::gemm::GemmCoord> all_problems;
+    all_problems.reserve(problem_count);
     for (int i = 0; i < problem_count; ++i)
     {
         int m = 8 * (rand() % 256) + 8;
         int n = 8 * (rand() % 256) + 8;
         int k = 8 * (rand() % 256) + 8;
         cutlass::gemm::GemmCoord problem(m, n, k);
-        problem_sizes.push_back(problem);
+        all_problems.push_back(problem);
         std::cout << "[" << i << "-th problem] m = " << m << ", n = " << n << ", k = " << k << std::endl;
     }
 
@@ -208,7 +205,7 @@ int main(void)
     cutlass::Distribution::Kind init_A = cutlass::Distribution::Uniform;
     cutlass::Distribution::Kind init_B = cutlass::Distribution::Uniform;
     cutlass::Distribution::Kind init_C = cutlass::Distribution::Uniform;
-    cutlass::DeviceAllocation<cutlass::gemm::GemmCoord> problem_sizes_device;
+    cutlass::DeviceAllocation<cutlass::gemm::GemmCoord> all_problems_device;
     std::vector<int64_t> offset_A;
     std::vector<int64_t> offset_B;
     std::vector<int64_t> offset_C;
@@ -230,6 +227,12 @@ int main(void)
     cutlass::DeviceAllocation<ElementC *> ptr_C;
     cutlass::DeviceAllocation<ElementC *> ptr_D;
 
+    /* check whether have sufficient resource */
+    int threadblock_count = get_threadblock_count();
+    if (!threadblock_count) {
+        throw std::runtime_error("Active CUDA device lacks hardware resources to run CUTLASS Grouped GEMM kernel.\n");
+    }
+
     /* initialize matrices */
     int64_t total_elements_A = 0;
     int64_t total_elements_B = 0;
@@ -241,7 +244,7 @@ int main(void)
     ldd_host.resize(problem_count);
     for (int32_t i = 0; i < problem_count; ++i)
     {
-        auto problem = problem_sizes.at(i);
+        auto problem = all_problems.at(i);
 
         lda_host.at(i) = LayoutA::packed({problem.m(), problem.k()}).stride(0);
         ldb_host.at(i) = LayoutB::packed({problem.k(), problem.n()}).stride(0);
@@ -263,8 +266,8 @@ int main(void)
         total_elements_C += elements_C;
         total_elements_D += elements_D;
     }
-    problem_sizes_device.reset(problem_count);
-    problem_sizes_device.copy_from_host(problem_sizes.data());
+    all_problems_device.reset(problem_count);
+    all_problems_device.copy_from_host(all_problems.data());
     lda.reset(problem_count);
     ldb.reset(problem_count);
     ldc.reset(problem_count);
@@ -302,17 +305,11 @@ int main(void)
     initialize_tensor_(block_C.get(), total_elements_C, init_C, 789);
     cutlass::reference::device::BlockFillSequential(
         block_D.get(), total_elements_D, ElementC(), ElementC());
-    
-    /* check whether have sufficient resource */
-    int threadblock_count = get_threadblock_count();
-    if (!threadblock_count) {
-        throw std::runtime_error("Active CUDA device lacks hardware resources to run CUTLASS Grouped GEMM kernel.\n");
-    }
 
     /* configure the GEMM arguments */
     typename EpilogueOutputOp::Params epilogue_op(alpha, beta);
     typename GemmGrouped::Arguments args(
-      problem_sizes_device.get(),
+      all_problems_device.get(),
       problem_count,
       threadblock_count,
       epilogue_op,
@@ -350,7 +347,7 @@ int main(void)
     bool passed = true;
     for (int32_t i = 0; i < problem_count; ++i) 
     {
-        cutlass::gemm::GemmCoord problem = problem_sizes.at(i);
+        cutlass::gemm::GemmCoord problem = all_problems.at(i);
 
         LayoutA layout_A(lda_host.at(i));
         LayoutB layout_B(ldb_host.at(i));
@@ -402,7 +399,7 @@ int main(void)
 
         if (!passed) {
             std::stringstream strstream;
-            strstream << "\n***\nError - problem " << i << " failed the QA check\n***\n";
+            strstream << "\n***\nError - problem " << i << " failed the QA check\n***\n" << std::endl;
             throw std::runtime_error(strstream.str());
         }
     }
