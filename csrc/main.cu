@@ -275,6 +275,13 @@ void GroupedGEMM(const ListTensor& matrices_A,
     // NOTE: in/out data types must be the same
     auto torch_type = matrices_A[0].scalar_type();
 
+    // using CutlassType = typename std::conditional<std::is_same<scalar_t, at::Half>::value, \
+    //                                               cutlass::half_t, scalar_t>::type;
+    // using AccType     = typename std::conditional<std::is_same<scalar_t, double>::value, \
+    //                                               double, float>::type;
+    // using OpType      = typename std::conditional<std::is_same<scalar_t, at::Half>::value, \
+    //                                               cutlass::arch::OpClassTensorOp, cutlass::arch::OpMultiplyAdd>::type;
+
     // dispatch: fp16, fp32, fp64
     if (torch_type == at::ScalarType::Half)
     {
@@ -282,15 +289,13 @@ void GroupedGEMM(const ListTensor& matrices_A,
         
         auto fn = [&] {
             // convert types
-            using CutlassType = typename std::conditional<std::is_same<scalar_t, at::Half>::value, \
-                                                          cutlass::half_t, scalar_t>::type;
-            using AccType     = typename std::conditional<std::is_same<scalar_t, double>::value, \
-                                                          double, float>::type;
-            using OpType      = typename std::conditional<std::is_same<scalar_t, at::Half>::value, \
-                                                          cutlass::arch::OpClassTensorOp, cutlass::arch::OpMultiplyAdd>::type;
+            using CutlassType = cutlass::half_t;
+            using AccType     = float;
+            using OpType      = cutlass::arch::OpClassTensorOp;
+            const int Alignment = 8;
             // run the kernel
-            GroupedGEMM_kernel<CutlassType, cutlass::layout::RowMajor, std::is_same<scalar_t, at::Half>::value ? 8 : 1,
-                               CutlassType, cutlass::layout::RowMajor, std::is_same<scalar_t, at::Half>::value ? 8 : 1,
+            GroupedGEMM_kernel<CutlassType, cutlass::layout::RowMajor, Alignment,
+                               CutlassType, cutlass::layout::RowMajor, Alignment,
                                CutlassType, cutlass::layout::RowMajor,
                                AccType,
                                OpType,
@@ -299,6 +304,10 @@ void GroupedGEMM(const ListTensor& matrices_A,
         };
 
         fn();
+    }
+    else
+    {
+        TORCH_CHECK(false, "not implemented for this data type \n");
     }
     
 }

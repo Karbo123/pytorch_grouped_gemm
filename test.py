@@ -7,9 +7,9 @@ import PYTORCH_GROUPED_GEMM
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 
-def prepare_data(bs=8, mul_min=32, mul_max=128, mul=8):
+def prepare_data(bs=8, mul_min=32, mul_max=128, mul=8, dtype=torch.half):
     As, Bs, Cs, Ds = [list() for _ in range(4)]
-    get = lambda *shape: torch.randn([*shape], dtype=torch.half, device="cuda")
+    get = lambda *shape: torch.randn([*shape], dtype=dtype, device="cuda")
     random.seed(0)
     for _ in range(bs):
         m, n, k = [random.randint(mul_min, mul_max) * mul for _ in range(3)]
@@ -22,23 +22,25 @@ def prepare_data(bs=8, mul_min=32, mul_max=128, mul=8):
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 # test correctness
 def test_correctness(kwargs_prepare=dict(bs=8, mul_min=32, mul_max=128, mul=8),
-                     kwargs_scale=dict(alpha=1.0, beta=0.0)):
-    As, Bs, Cs, cutlass_result = prepare_data(**kwargs_prepare)
-    alpha, beta = kwargs_scale["alpha"], kwargs_scale["beta"]
+                     kwargs_scale=dict(alpha=1.0, beta=0.0),
+                     dtype_lst=[torch.half, torch.float32]):
+    for dtype in dtype_lst:
+        As, Bs, Cs, cutlass_result = prepare_data(**kwargs_prepare, dtype=dtype)
+        alpha, beta = kwargs_scale["alpha"], kwargs_scale["beta"]
 
-    pytorch_result = list()
-    for A, B, C in zip(As, Bs, Cs):
-        pytorch_result.append(alpha * A @ B + beta * C)
+        pytorch_result = list()
+        for A, B, C in zip(As, Bs, Cs):
+            pytorch_result.append(alpha * A @ B + beta * C)
 
-    PYTORCH_GROUPED_GEMM.GroupedGEMM(As, Bs, Cs, cutlass_result, alpha, beta)
+        PYTORCH_GROUPED_GEMM.GroupedGEMM(As, Bs, Cs, cutlass_result, alpha, beta)
 
-    # check
-    THRES = 1e-3
-    for cutlass_res, pytorch_res in zip(cutlass_result, pytorch_result):
-        error = (cutlass_res.float() - pytorch_res.float()).abs()
-        error_bound = torch.maximum(cutlass_res.float().abs(), pytorch_res.float().abs())
-        relative_error = (error / error_bound).mean()
-        assert relative_error < THRES, f"relative error {relative_error:.3e} (>= {THRES}) is too large"
+        # check
+        THRES = 1e-3
+        for cutlass_res, pytorch_res in zip(cutlass_result, pytorch_result):
+            error = (cutlass_res.float() - pytorch_res.float()).abs()
+            error_bound = torch.maximum(cutlass_res.float().abs(), pytorch_res.float().abs())
+            relative_error = (error / error_bound).mean()
+            assert relative_error < THRES, f"relative error {relative_error:.3e} (>= {THRES}) is too large for dtype = {dtype}"
     print("correctness test passed!")
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
@@ -68,7 +70,8 @@ def test_speed(kwargs_prepare=dict(bs=8, mul_min=32, mul_max=128, mul=8),
 
 if __name__ == "__main__":
     test_correctness(kwargs_prepare=dict(bs=8, mul_min=32, mul_max=128, mul=8),
-                     kwargs_scale=dict(alpha=1.0, beta=1.0))
+                     kwargs_scale=dict(alpha=1.0, beta=1.0),
+                     dtype_lst=[torch.half, torch.float32])
     test_speed(kwargs_prepare=dict(bs=8192, mul_min=1, mul_max=16, mul=8),
                kwargs_scale=dict(alpha=1.0, beta=1.0),
                try_times=10)
