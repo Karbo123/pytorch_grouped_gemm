@@ -8,5 +8,22 @@ possible applications:
 - transformer's attention matrix with different sizes; 
 - convolution with different size for each batch (e.g. point clouds with different num of poitns)
 
-todo: plan to use [cutlass](https://github.com/NVIDIA/cutlass/blob/master/examples/24_gemm_grouped/gemm_grouped.cu) and provide an interface for pytorch
+performance overview:
+- half (fp16):
+  - pytorch = 3.6461 sec
+  - cutlass = 0.0759 sec
 
+a build example:
+```
+mkdir build && cd build
+cmake .. -DCMAKE_PREFIX_PATH=$CONDA_PREFIX/lib/python3.7/site-packages/torch/share/cmake/Torch
+make VERBOSE=1
+cd -
+```
+
+run the test script:
+```
+CUDA_VISIBLE_DEVICES=0 python test.py
+```
+
+**note**: currently the codes only support *ampere(>=80)* cuda architecture and *half(fp16)* precision

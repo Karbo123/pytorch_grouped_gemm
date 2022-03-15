@@ -255,16 +255,17 @@ void GroupedGEMM(const ListTensor& matrices_A,
     TORCH_CHECK(status == cutlass::Status::kSuccess, "GroupedGEMM kernel run: failed \n");
 
     // wait
-    cudaError_t error = cudaDeviceSynchronize();
-    TORCH_CHECK(error == cudaSuccess, "cudaDeviceSynchronize() failed \n");
+    // cudaError_t error = cudaDeviceSynchronize();
+    // TORCH_CHECK(error == cudaSuccess, "cudaDeviceSynchronize() failed \n");
 }
 
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("GroupedGEMM", &GroupedGEMM<cutlass::half_t, cutlass::layout::ColumnMajor, 8,
-                                      cutlass::half_t, cutlass::layout::ColumnMajor, 8,
-                                      cutlass::half_t, cutlass::layout::ColumnMajor,
+    // pytorch uses row-major
+    m.def("GroupedGEMM", &GroupedGEMM<cutlass::half_t, cutlass::layout::RowMajor, 8,
+                                      cutlass::half_t, cutlass::layout::RowMajor, 8,
+                                      cutlass::half_t, cutlass::layout::RowMajor,
                                       float,
                                       cutlass::arch::OpClassTensorOp,
                                       cutlass::arch::Sm80>, 

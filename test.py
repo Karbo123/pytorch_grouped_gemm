@@ -1,82 +1,82 @@
 import sys
 import time
 import torch
-from random import randint
+import random
 sys.path.append("build")
 import PYTORCH_GROUPED_GEMM
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+
+def prepare_data(bs=8, mul_min=32, mul_max=128, mul=8):
+    As, Bs, Cs, Ds = [list() for _ in range(4)]
+    get = lambda *shape: torch.randn([*shape], dtype=torch.half, device="cuda")
+    random.seed(0)
+    for _ in range(bs):
+        m, n, k = [random.randint(mul_min, mul_max) * mul for _ in range(3)]
+        As.append(get(m, k))
+        Bs.append(get(k, n))
+        Cs.append(get(m, n))
+        Ds.append(get(m, n))
+    return As, Bs, Cs, Ds
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 # test correctness
+def test_correctness(kwargs_prepare=dict(bs=8, mul_min=32, mul_max=128, mul=8),
+                     kwargs_scale=dict(alpha=1.0, beta=0.0)):
+    As, Bs, Cs, cutlass_result = prepare_data(**kwargs_prepare)
+    alpha, beta = kwargs_scale["alpha"], kwargs_scale["beta"]
 
-A, B, C, D = [[torch.randn([1024, 1024], dtype=torch.half, device="cuda"), 
-               torch.randn([512, 512], dtype=torch.half, device="cuda")] for _ in range(4)]
-Ac = [x.clone() for x in A]
-Bc = [x.clone() for x in B]
-Cc = [x.clone() for x in C]
-Dc = [x.clone() for x in D]
+    pytorch_result = list()
+    for A, B, C in zip(As, Bs, Cs):
+        pytorch_result.append(alpha * A @ B + beta * C)
 
-alpha, beta = 1.0, 0.0
-PYTORCH_GROUPED_GEMM.GroupedGEMM(Ac, Bc, Cc, Dc, alpha, beta)
+    PYTORCH_GROUPED_GEMM.GroupedGEMM(As, Bs, Cs, cutlass_result, alpha, beta)
 
-Dlst = list()
-for a, b, c in zip(A, B, C):
-    Dlst.append((alpha * a.t() @ b.t() + beta * c.t()).t())
-
-# check
-for cutlass, ptgemm in zip(Dc, Dlst):
-    err = (cutlass - ptgemm).abs()
-    print(f"abs err max = {err.max():.3e}")
-    print(f"abs err mean = {err.mean():.3e}")
+    # check
+    THRES = 1e-3
+    for cutlass_res, pytorch_res in zip(cutlass_result, pytorch_result):
+        error = (cutlass_res.float() - pytorch_res.float()).abs()
+        error_bound = torch.maximum(cutlass_res.float().abs(), pytorch_res.float().abs())
+        relative_error = (error / error_bound).mean()
+        assert relative_error < THRES, f"relative error {relative_error:.3e} (>= {THRES}) is too large"
+    print("correctness test passed!")
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 # test speed
+def test_speed(kwargs_prepare=dict(bs=8, mul_min=32, mul_max=128, mul=8),
+               kwargs_scale=dict(alpha=1.0, beta=0.0),
+               try_times=10,
+            ):
+    As, Bs, Cs, cutlass_result = prepare_data(**kwargs_prepare)
+    alpha, beta = kwargs_scale["alpha"], kwargs_scale["beta"]
 
-batch_size = 1024
+    # pytorch's method
+    pytorch_result = list()
+    torch.cuda.synchronize(); t0 = time.time()
+    for _ in range(try_times):
+        for A, B, C in zip(As, Bs, Cs):
+            pytorch_result.append(alpha * A @ B + beta * C)
+    torch.cuda.synchronize(); t1 = time.time()
+    print(f"time for pytorch = {t1 - t0}")
 
-As = list()
-Bs = list()
-Cs = list()
-Ds = list()
-for _ in range(batch_size):
-    m, n, k = [randint(32, 128) * 8 for _ in range(3)]
-    As.append(torch.randn([m, k], dtype=torch.half, device="cuda"))
-    Bs.append(torch.randn([k, n], dtype=torch.half, device="cuda"))
-    Cs.append(torch.randn([m, n], dtype=torch.half, device="cuda"))
-    Ds.append(torch.randn([m, n], dtype=torch.half, device="cuda"))
-As_copy = [x.clone() for x in As]
-Bs_copy = [x.clone() for x in Bs]
-Cs_copy = [x.clone() for x in Cs]
-Ds_copy = [x.clone() for x in Ds]
+    # cutlass's method
+    torch.cuda.synchronize(); t0 = time.time()
+    for _ in range(try_times):
+        PYTORCH_GROUPED_GEMM.GroupedGEMM(As, Bs, Cs, cutlass_result, alpha, beta)
+    torch.cuda.synchronize(); t1 = time.time()
+    print(f"time for cutlass = {t1 - t0}")
 
-alpha, beta = 1.0, 0.0
+if __name__ == "__main__":
+    test_correctness(kwargs_prepare=dict(bs=8, mul_min=32, mul_max=128, mul=8),
+                     kwargs_scale=dict(alpha=1.0, beta=1.0))
+    test_speed(kwargs_prepare=dict(bs=8192, mul_min=1, mul_max=16, mul=8),
+               kwargs_scale=dict(alpha=1.0, beta=1.0),
+               try_times=10)
 
-# cutlass's method
-torch.cuda.synchronize()
-t0 = time.time()
-PYTORCH_GROUPED_GEMM.GroupedGEMM(As_copy, Bs_copy, Cs_copy, Ds_copy, alpha, beta)
-torch.cuda.synchronize()
-t1 = time.time()
-print(f"time for cutlass = {t1 - t0}")
+    """
+    correctness test passed!
+    time for pytorch = 3.646150588989258
+    time for cutlass = 0.07591462135314941
 
-# pytorch's method
-D_collection = list()
-linear_fn = torch.nn.functional.linear
-torch.cuda.synchronize()
-t0 = time.time()
-for A, B, C in zip(As, Bs, Cs):
-    D_collection.append(A @ B + C)
-torch.cuda.synchronize()
-t1 = time.time()
-print(f"time for pytorch = {t1 - t0}")
-
-
-"""
-abs err max = 0.000e+00
-abs err mean = 0.000e+00
-abs err max = 3.125e-02
-abs err mean = 7.093e-06
-time for cutlass = 0.020124435424804688
-time for pytorch = 0.15853619575500488
-
-"""
+    """
 
