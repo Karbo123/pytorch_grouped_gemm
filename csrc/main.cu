@@ -75,13 +75,13 @@ template <
     typename OperatorClass = cutlass::arch::OpClassTensorOp,
     typename ArchTag = cutlass::arch::Sm80
 >
-void GroupedGEMM(const ListTensor& matrices_A,
-                 const ListTensor& matrices_B,
-                 const ListTensor& matrices_C,
-                 const ListTensor& matrices_D,
-                 float alpha = 1.0, 
-                 float beta = 0.0
-                )
+void GroupedGEMM_kernel(const ListTensor& matrices_A,
+                        const ListTensor& matrices_B,
+                        const ListTensor& matrices_C,
+                        const ListTensor& matrices_D,
+                        float alpha = 1.0, 
+                        float beta = 0.0
+                    )
 {
     /* some types */
     using GemmKernel = typename cutlass::gemm::kernel::DefaultGemmGrouped<
@@ -147,6 +147,7 @@ void GroupedGEMM(const ListTensor& matrices_A,
         CHECK_INPUT(matrix_B);
         CHECK_INPUT(matrix_C);
         CHECK_INPUT(matrix_D);
+        // TODO also check datatype @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ 
 
         auto m  = matrix_A.size(0);
         auto k  = matrix_A.size(1);
@@ -259,16 +260,57 @@ void GroupedGEMM(const ListTensor& matrices_A,
     // TORCH_CHECK(error == cudaSuccess, "cudaDeviceSynchronize() failed \n");
 }
 
+// // // // // // // // // // // // // // // // // // // // // // // // 
+
+
+
+void GroupedGEMM(const ListTensor& matrices_A,
+                 const ListTensor& matrices_B,
+                 const ListTensor& matrices_C,
+                 const ListTensor& matrices_D,
+                 float alpha = 1.0, 
+                 float beta = 0.0
+                )
+{
+    // NOTE: in/out data types must be the same
+    auto torch_type = matrices_A[0].scalar_type();
+
+    // dispatch: fp16, fp32, fp64
+    if (torch_type == at::ScalarType::Half)
+    {
+        using scalar_t = at::Half;
+        
+        auto fn = [&] {
+            // convert types
+            using CutlassType = typename std::conditional<std::is_same<scalar_t, at::Half>::value, \
+                                                          cutlass::half_t, scalar_t>::type;
+            using AccType     = typename std::conditional<std::is_same<scalar_t, double>::value, \
+                                                          double, float>::type;
+            using OpType      = typename std::conditional<std::is_same<scalar_t, at::Half>::value, \
+                                                          cutlass::arch::OpClassTensorOp, cutlass::arch::OpMultiplyAdd>::type;
+            // run the kernel
+            GroupedGEMM_kernel<CutlassType, cutlass::layout::RowMajor, std::is_same<scalar_t, at::Half>::value ? 8 : 1,
+                               CutlassType, cutlass::layout::RowMajor, std::is_same<scalar_t, at::Half>::value ? 8 : 1,
+                               CutlassType, cutlass::layout::RowMajor,
+                               AccType,
+                               OpType,
+                               cutlass::arch::Sm80>
+                            (matrices_A, matrices_B, matrices_C, matrices_D, alpha, beta);
+        };
+
+        fn();
+    }
+    
+}
+
+
+// // // // // // // // // // // // // // // // // // // // // // // // 
+
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     // pytorch uses row-major
-    m.def("GroupedGEMM", &GroupedGEMM<cutlass::half_t, cutlass::layout::RowMajor, 8,
-                                      cutlass::half_t, cutlass::layout::RowMajor, 8,
-                                      cutlass::half_t, cutlass::layout::RowMajor,
-                                      float,
-                                      cutlass::arch::OpClassTensorOp,
-                                      cutlass::arch::Sm80>, 
+    m.def("GroupedGEMM", &GroupedGEMM, 
           "GroupedGEMM (CUDA)", 
           py::arg("matrices_A"), 
           py::arg("matrices_B"), 
