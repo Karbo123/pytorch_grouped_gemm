@@ -71,7 +71,7 @@ def test_speed(kwargs_prepare=dict(bs=8, mul_min=32, mul_max=128, mul=8),
 if __name__ == "__main__":
     test_correctness(kwargs_prepare=dict(bs=8, mul_min=32, mul_max=128, mul=8),
                      kwargs_scale=dict(alpha=1.0, beta=1.0),
-                     dtype_lst=[torch.half, torch.float32])
+                     dtype_lst=[torch.half, ])
     test_speed(kwargs_prepare=dict(bs=8192, mul_min=1, mul_max=16, mul=8),
                kwargs_scale=dict(alpha=1.0, beta=1.0),
                try_times=10)
