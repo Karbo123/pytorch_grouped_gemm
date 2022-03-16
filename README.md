@@ -36,7 +36,7 @@ run the test script:
 CUDA_VISIBLE_DEVICES=0 python test.py
 ```
 
-**note**: currently the codes only support *ampere(>=80)* cuda architecture and *half(fp16)* precision
+**note**: currently the codes only support *ampere(>=80)* cuda architecture
 
 todo: 
 - [x] add fp32 and fp64 supports
