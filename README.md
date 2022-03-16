@@ -9,9 +9,19 @@ possible applications:
 - convolution with different size for each batch (e.g. point clouds with different num of poitns)
 
 performance overview:
-- half (fp16):
-  - pytorch = 3.6461 sec
-  - cutlass = 0.0759 sec
+```
+testing speed for torch.float16
+  time for pytorch = 3.490262269973755
+  time for cutlass = 0.07040643692016602
+
+testing speed for torch.float32
+  time for pytorch = 3.4165427684783936
+  time for cutlass = 0.10037946701049805
+
+testing speed for torch.float64
+  time for pytorch = 3.352168083190918
+  time for cutlass = 0.41443443298339844
+```
 
 a build example:
 ```
@@ -29,5 +39,5 @@ CUDA_VISIBLE_DEVICES=0 python test.py
 **note**: currently the codes only support *ampere(>=80)* cuda architecture and *half(fp16)* precision
 
 todo: 
-- add fp32 and fp64 supports
-- use other cuda arch
+- [x] add fp32 and fp64 supports
+- [ ] use other cuda arch

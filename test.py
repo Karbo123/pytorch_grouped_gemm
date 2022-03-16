@@ -35,7 +35,7 @@ def test_correctness(kwargs_prepare=dict(bs=8, mul_min=32, mul_max=128, mul=8),
         PYTORCH_GROUPED_GEMM.GroupedGEMM(As, Bs, Cs, cutlass_result, alpha, beta)
 
         # check
-        THRES = 1e-3
+        THRES = 1e-2
         for cutlass_res, pytorch_res in zip(cutlass_result, pytorch_result):
             error = (cutlass_res.float() - pytorch_res.float()).abs()
             error_bound = torch.maximum(cutlass_res.float().abs(), pytorch_res.float().abs())
@@ -48,8 +48,9 @@ def test_correctness(kwargs_prepare=dict(bs=8, mul_min=32, mul_max=128, mul=8),
 def test_speed(kwargs_prepare=dict(bs=8, mul_min=32, mul_max=128, mul=8),
                kwargs_scale=dict(alpha=1.0, beta=0.0),
                try_times=10,
+               dtype=torch.half,
             ):
-    As, Bs, Cs, cutlass_result = prepare_data(**kwargs_prepare)
+    As, Bs, Cs, cutlass_result = prepare_data(**kwargs_prepare, dtype=dtype)
     alpha, beta = kwargs_scale["alpha"], kwargs_scale["beta"]
 
     # pytorch's method
@@ -71,15 +72,29 @@ def test_speed(kwargs_prepare=dict(bs=8, mul_min=32, mul_max=128, mul=8),
 if __name__ == "__main__":
     test_correctness(kwargs_prepare=dict(bs=8, mul_min=32, mul_max=128, mul=8),
                      kwargs_scale=dict(alpha=1.0, beta=1.0),
-                     dtype_lst=[torch.half, ])
-    test_speed(kwargs_prepare=dict(bs=8192, mul_min=1, mul_max=16, mul=8),
-               kwargs_scale=dict(alpha=1.0, beta=1.0),
-               try_times=10)
+                     dtype_lst=[torch.half, torch.float, torch.float64])
+    
+    for dtype in (torch.half, torch.float32, torch.float64):
+        print()
+        print(f"testing speed for {dtype}")
+        test_speed(kwargs_prepare=dict(bs=8192, mul_min=1, mul_max=16, mul=8),
+                   kwargs_scale=dict(alpha=1.0, beta=1.0),
+                   try_times=10, dtype=dtype)
 
     """
     correctness test passed!
-    time for pytorch = 3.646150588989258
-    time for cutlass = 0.07591462135314941
+
+    testing speed for torch.float16
+    time for pytorch = 3.490262269973755
+    time for cutlass = 0.07040643692016602
+
+    testing speed for torch.float32
+    time for pytorch = 3.4165427684783936
+    time for cutlass = 0.10037946701049805
+
+    testing speed for torch.float64
+    time for pytorch = 3.352168083190918
+    time for cutlass = 0.41443443298339844
 
     """
 
