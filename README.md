@@ -6,7 +6,7 @@ why: pytorch/cublas only support batched GEMM (use the same M, N, K), but does n
 
 possible applications:
 - transformer's attention matrix with different sizes; 
-- convolution with different size for each batch (e.g. point clouds with different num of poitns)
+- convolution with different size for each batch (e.g. point clouds with different num of points)
 
 performance overview:
 ```
