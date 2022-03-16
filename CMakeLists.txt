@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
 project(PYTORCH_GROUPED_GEMM LANGUAGES CXX CUDA)
 
 set(CMAKE_BUILD_TYPE Release)
+set(COMPILE_CC 80) # NOTE: set the cuda arch
 
 # my lib
 find_package(Torch 1.8 REQUIRED)
@@ -13,7 +14,7 @@ add_library(${PROJECT_NAME} SHARED "${CMAKE_SOURCE_DIR}/csrc/main.cu")
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_14) 
 
-set_target_properties(${PROJECT_NAME} PROPERTIES CUDA_ARCHITECTURES "80;86")
+set_target_properties(${PROJECT_NAME} PROPERTIES CUDA_ARCHITECTURES ${COMPILE_CC})
 set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 set_target_properties(${PROJECT_NAME} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
@@ -22,6 +23,7 @@ target_link_libraries(${PROJECT_NAME} ${TORCH_PYTHON_LIBRARY})
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC TORCH_EXTENSION_NAME=${PROJECT_NAME})
 target_compile_definitions(${PROJECT_NAME} PUBLIC ${TORCH_CXX_FLAGS})
+target_compile_definitions(${PROJECT_NAME} PUBLIC COMPILE_CC=${COMPILE_CC})
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${TORCH_INCLUDE_DIRS})
 target_include_directories(${PROJECT_NAME} PUBLIC ${Python3_INCLUDE_DIRS})

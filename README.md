@@ -24,6 +24,7 @@ testing speed for torch.float64
 ```
 
 a build example:
+please change `set(COMPILE_CC 80)` in `CMakeLists.txt` to a proper arch before compilation
 ```
 mkdir build && cd build
 cmake .. -DCMAKE_PREFIX_PATH=$CONDA_PREFIX/lib/python3.7/site-packages/torch/share/cmake/Torch
@@ -36,8 +37,7 @@ run the test script:
 CUDA_VISIBLE_DEVICES=0 python test.py
 ```
 
-**note**: currently the codes only support *ampere(>=80)* cuda architecture
+**note**:
+- to use fp32/fp64, must compile with arch >= 50
+- to use fp16, must compile with arch >= 75
 
-todo: 
-- [x] add fp32 and fp64 supports
-- [ ] use other cuda arch
