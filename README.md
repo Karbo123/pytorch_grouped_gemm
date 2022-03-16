@@ -40,4 +40,4 @@ CUDA_VISIBLE_DEVICES=0 python test.py
 **note**:
 - to use fp32/fp64, must compile with arch >= 50
 - to use fp16, must compile with arch >= 75
-
+- matrix sizes of fp16 must be aligned with 8
