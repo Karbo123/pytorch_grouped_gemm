@@ -45,3 +45,5 @@ CUDA_VISIBLE_DEVICES=0 python test.py
 **todo**:
 - [ ] support group_gemm pytorch function (forward + backward)
 - [ ] support tf32 for high-end gpu
+- [ ] support gemm merged with softmax (see [here](https://github.com/NVIDIA/cutlass/tree/master/examples/35_gemm_softmax))
+- [ ] support gemm merged with gather-scatter (see [here](https://github.com/NVIDIA/cutlass/tree/master/examples/36_gather_scatter_fusion))
