@@ -11,16 +11,16 @@ possible applications:
 performance overview:
 ```
 testing speed for torch.float16
-  time for pytorch = 3.490262269973755
-  time for cutlass = 0.07040643692016602
+time for pytorch = 3.5916242599487305
+time for cutlass = 0.1151578426361084
 
-testing speed for torch.float32
-  time for pytorch = 3.4165427684783936
-  time for cutlass = 0.10037946701049805
+testing speed for torch.float32       # note results are for fp32 instead of tf32
+time for pytorch = 3.5333731174468994
+time for cutlass = 0.14151287078857422
 
 testing speed for torch.float64
-  time for pytorch = 3.352168083190918
-  time for cutlass = 0.41443443298339844
+time for pytorch = 3.743123769760132
+time for cutlass = 0.45430731773376465
 ```
 
 a build example:
@@ -41,3 +41,7 @@ CUDA_VISIBLE_DEVICES=0 python test.py
 - to use fp32/fp64, must compile with arch >= 50
 - to use fp16, must compile with arch >= 75
 - matrix sizes of fp16 must be aligned with 8
+
+**todo**:
+- [ ] support group_gemm pytorch function (forward + backward)
+- [ ] support tf32 for high-end gpu
